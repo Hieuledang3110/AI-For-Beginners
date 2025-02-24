@@ -1,9 +1,19 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pickle
-import os
 import random
 import gzip
+
+def sigmoid(x):
+    """Sigmoid activation function."""
+    return 1 / (1 + np.exp(-x))
+
+def no_func(x):
+    """No activation function."""
+    return x
+
+def relu(x):
+    """ReLU activation function."""
+    return np.maximum(0, x)
 
 # Load the MNIST data with the correct encoding
 with gzip.open('mnist.pkl.gz', 'rb') as mnist_pickle:
@@ -14,88 +24,125 @@ training_data, validation_data, test_data = MNIST  # Unpack the tuple
 train_features, train_labels = training_data
 val_features, val_labels = validation_data
 test_features, test_labels = test_data
-# Normalize features to the range [0, 1] to improve training stability
-# Note: This is a common practice for many machine learning algorithm. MNIST dataset contains grayscale images, where each pixel value ranges from 0 to 255
+# Normalize features to the range [0, 1]
 train_features = train_features.astype(np.float32) / 255.0
 val_features = val_features.astype(np.float32) / 255.0
 test_features = test_features.astype(np.float32) / 255.0
 
-# Filter positive and negative examples for training
-def set_mnist_pos_neg(target_label, x_labels, x_features):
-    positive_indices = [i for i, label in enumerate(x_labels) if label == target_label]
-    negative_indices = [i for i, label in enumerate(x_labels) if label != target_label]
+# Multi-layer Perceptron Weights Initialization
+def initialize_mlp(layers):
+    """
+    Initialize weights and biases for a multi-layer perceptron.
+    layers: List of layer sizes, e.g., [784, 128, 64, 10]
+    Returns:
+    - weights: List of weight matrices for each layer
+    - biases: List of bias vectors for each layer
+    """
+    weights = []
+    biases = []
+    for i in range(len(layers) - 1):
+        weights.append(np.random.randn(layers[i], layers[i + 1]) * 0.01)
+        biases.append(np.zeros((1, layers[i + 1])))
+    return weights, biases
 
-    positive_images = x_features[positive_indices]
-    negative_images = x_features[negative_indices]
-    
-    return positive_images, negative_images
+# Forward pass through the network
+def forward_mlp(X, weights, biases, activation_fn=sigmoid):
+    """
+    Perform a forward pass through the MLP.
+    X: Input data (batch_size x input_size)
+    weights: List of weight matrices
+    biases: List of bias vectors
+    activation_fn: Activation function to apply
+    Returns:
+    - activations: List of activations for each layer
+    """
+    activations = [X]
+    for W, b in zip(weights, biases):
+        Z = np.dot(activations[-1], W) + b
+        A = activation_fn(Z)
+        activations.append(A)
+    return activations
 
-# Train function for a single binary classifier (one-vs-all)
-def train(positive_examples, negative_examples, num_iterations, lambda_reg, weights):
-    num_dims = positive_examples.shape[1]  # Number of features
-    if weights is None:  # Initialize weights if not provided
-        weights = np.zeros((num_dims, 1))*0.01 # Shape: (num_features, 1), initialized with small values to prevent convergence issues
+# Train function for a single layer
+def train_layer(X, y, weights, biases, num_iterations, lambda_reg, learning_rate, activation_fn=sigmoid):
+    """
+    Train a single layer of the MLP.
+    X: Input features
+    y: Target outputs
+    weights, biases: Current weights and biases for the layer
+    """
+    for i in range(num_iterations):
+        idx = random.randint(0, X.shape[0] - 1)
+        x_sample = X[idx:idx + 1]  # Random single sample
+        y_sample = y[idx:idx + 1]  # Corresponding label
 
-    for i in range(num_iterations):  # Optimize weights through gradient descent
-        pos = random.choice(positive_examples).reshape(-1, 1)  # Shape: (num_features, 1)
-        neg = random.choice(negative_examples).reshape(-1, 1)  # Shape: (num_features, 1)
+        # Forward pass through the layer
+        Z = np.dot(x_sample, weights) + biases
+        A = activation_fn(Z)
 
-        # Update weights based on positive and negative examples
-        if np.dot(weights.T, pos) < 0:
-            weights += pos
-        if np.dot(weights.T, neg) >= 0:
-            weights -= neg
-        # Apply L2 regularization
-        weights -= lambda_reg * weights  # Regularization step
+        # Compute error (difference between prediction and target)
+        error = A - y_sample
 
-    return weights
+        # Update weights and biases using the error
+        weights -= learning_rate * np.dot(x_sample.T, error) + lambda_reg * weights
+        biases -= learning_rate * error
 
-# Train one-vs-all classifiers for one layer with weight updates
-def train_all_classes(train_features, train_labels, num_iterations, lambda_reg, weights_list):
-    if weights_list is None:
-        # Initialize weights for 10 classes if not provided
-        weights_list = [np.zeros((train_features.shape[1], 1)) for _ in range(10)]  
+        # # Debug: Print weight updates
+        # if i % 10 == 0:  # Every 10 iterations
+        #     print(f"Iteration {i}, Weights Norm: {np.linalg.norm(weights):.4f}, Error Norm: {np.linalg.norm(error):.4f}")
 
-    updated_weights_list = []
-    for digit in range(10):  # Train one classifier per digit (0-9)
-        pos_examples, neg_examples = set_mnist_pos_neg(digit, train_labels, train_features)
-        # Pass existing weights to the train function to update them
-        weights = train(pos_examples, neg_examples, num_iterations, lambda_reg, weights_list[digit])
-        updated_weights_list.append(weights)
+    return weights, biases
 
-    return updated_weights_list
+# Train the entire network
+def train_mlp(train_features, train_labels, layers, num_iterations, lambda_reg, learning_rate):
+    """
+    Train a multi-layer perceptron layer by layer.
+    layers: List of layer sizes, e.g., [784, 128, 64, 10]
+    """
+    weights, biases = initialize_mlp(layers)
 
+    # Train each layer independently
+    for l in range(len(layers) - 1):
+        print(f"Training layer {l + 1}/{len(layers) - 1}")
+        weights[l], biases[l] = train_layer(
+            train_features,
+            train_labels,
+            weights[l],
+            biases[l],
+            num_iterations,
+            lambda_reg,
+            learning_rate,
+        )
+        # Use current layer's output as input to the next layer
+        train_features = forward_mlp(train_features, [weights[l]], [biases[l]])[-1]
 
-# Multi-layer perceptron with weight updating across layers
-def multi_layer_training(train_features, train_labels, num_iterations, lambda_reg, num_layers):
-    weights_list = None  # Initialize weights list for the first layer
-    accuracies = []  # Track accuracies for each layer
-    for layer in range(num_layers):
-        print(f"Training Layer {layer + 1}")
-        weights_list = train_all_classes(train_features, train_labels, num_iterations, lambda_reg, weights_list)
-        # Evaluate the current weights on the test set
-        predicted_labels = classify_multi_class(weights_list, test_features)
-        layer_accuracy = accuracy(predicted_labels, test_labels)
-        accuracies.append(layer_accuracy)
-        print(f"Accuracy after Layer {layer + 1}: {layer_accuracy:.4f}")
-    return weights_list, accuracies
+    return weights, biases
 
+# Classification through the network
+def classify_mlp(test_features, weights, biases, activation_fn=relu):
+    """
+    Classify samples using the trained MLP.
+    test_features: Input features
+    weights, biases: Trained weights and biases
+    """
+    activations = forward_mlp(test_features, weights, biases, activation_fn)
+    predictions = np.argmax(activations[-1], axis=1)  # Class with highest output
+    return predictions
 
-# Classification Function with Matrix Multiplication
-def classify_multi_class(weights_list, test_features):
-    # Convert weights list to a (num_features, 10) matrix
-    weights_matrix = np.column_stack(weights_list)  # Shape: (num_features, 10)
-    # Compute scores: test_features (num_samples, num_features) * weights_matrix (num_features, 10)
-    scores = np.dot(test_features, weights_matrix)  # Shape: (num_samples, 10)
-    # For each test sample, pick the class with the highest score
-    predicted_labels = np.argmax(scores, axis=1)  # Shape: (num_samples, ) - max score index for each sample
-    return predicted_labels
+# Define the architecture
+layers = [784, 256, 64, 10]  # Example: 2 hidden layers with 128 and 64 neurons
 
-def accuracy(predicted_labels, test_labels):
-    return float(np.sum(predicted_labels == test_labels) / len(test_labels))
+# Train the MLP
+weights, biases = train_mlp(
+    train_features,
+    train_labels,
+    layers,
+    num_iterations=200,
+    lambda_reg=0.01,
+    learning_rate=0.1,
+)
 
-# Train and evaluate the multi-layer perceptron
-num_layers = 3  # Define the number of layers
-weights_list, accuracies = multi_layer_training(train_features, train_labels, 200, -0.015, num_layers)
-# Final accuracy after all layers
-print("Final multi-layer perceptron accuracy:", accuracies[-1])
+# Test the MLP
+predicted_labels = classify_mlp(test_features, weights, biases)
+accuracy = np.mean(predicted_labels == test_labels)
+print(f"Test accuracy: {accuracy}")

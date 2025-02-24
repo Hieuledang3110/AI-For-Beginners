@@ -1,9 +1,8 @@
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import random
 import gzip
-from sklearn.metrics import confusion_matrix, classification_report
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
@@ -25,6 +24,22 @@ test_features, test_labels = test_data
 train_features = train_features.astype(np.float32) / 255.0
 val_features = val_features.astype(np.float32) / 255.0
 test_features = test_features.astype(np.float32) / 255.0
+
+# Multi-layer Perceptron Weights Initialization
+def initialize_mlp(layers):
+    """
+    Initialize weights and biases for a multi-layer perceptron.
+    layers: List of layer sizes, e.g., [784, 128, 64, 10]
+    Returns:
+    - weights: List of weight matrices for each layer
+    - biases: List of bias vectors for each layer
+    """
+    weights = []
+    biases = []
+    for i in range(len(layers) - 1):
+        weights.append(np.random.randn(layers[i], layers[i + 1]) * 0.01)
+        biases.append(np.zeros((1, layers[i + 1])))
+    return weights, biases
 
 # Filter positive and negative examples for training
 def set_mnist_pos_neg(target_label, x_labels, x_features):
@@ -54,11 +69,11 @@ def train(positive_examples, negative_examples, num_iterations, lambda_reg, lear
         if np.dot(neg, weights) >= 0:
             weights -= learning_rate * neg.reshape(weights.shape)  # Scale update by learning rate
         # L2 Regularization: Shrink weights slightly to prevent large weights
-        weights -= learning_rate * lambda_reg * weights  # Scale regularization by learning rate
+        weights -= learning_rate * lambda_reg * weights  # Scale regularization using lambda_reg
 
     return weights
 
-# Train one-vs-all classifiers
+# Train one-vs-all classifiers (a binary classifier for each digits from 0 to 9)
 def train_all_classes(train_features, train_labels, num_iterations, lambda_reg, learning_rate):
     weights_list = []
     for digit in range(10):  # Train one classifier per digit (0-9)
@@ -69,10 +84,10 @@ def train_all_classes(train_features, train_labels, num_iterations, lambda_reg, 
 
 # Classification Function with Matrix Multiplication
 def classify_multi_class(weights_list, test_features, test_labels, activation_fn):
-    # Add bias term to test features (size=785)
+    # Add bias term to test features (size=785, shape: size x 785)
     test_features = np.hstack((test_features, np.ones((test_features.shape[0], 1))))
     # Convert weights list to a (num_features, 10) matrix
-    weights_matrix = np.column_stack(weights_list)  # Shape: (num_features, 10)
+    weights_matrix = np.column_stack(weights_list)  # Shape: (785, 10)
     # Compute scores: test_features (num_samples, num_features) * weights_matrix (num_features, 10)
     scores = np.dot(test_features, weights_matrix)  # Shape: (num_samples, 10)
     # Apply the activation function to the scores
@@ -119,21 +134,21 @@ def accuracy(predicted_labels, test_labels):
     
 #     return results
 
-# Visualize the weights for each digit
-def visualize_weights(weights_list):
-    for i, weights in enumerate(weights_list):
-        plt.imshow(weights[:-1].reshape(28, 28), cmap='gray')
-        plt.title(f"Weight visualization for digit {i}")
-        plt.show()
+# # Visualize the weights for each digit
+# def visualize_weights(weights_list):
+#     for i, weights in enumerate(weights_list):
+#         plt.imshow(weights[:-1].reshape(28, 28), cmap='gray')
+#         plt.title(f"Weight visualization for digit {i}")
+#         plt.show()
 
-# Visualize the confusion matrix to understand the classification performance and errors
-def visualize_confusion_matrix(test_labels, predicted_labels):
-    cm = confusion_matrix(test_labels, predicted_labels)
-    print("Classification Report:\n", classification_report(test_labels, predicted_labels))
-    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title("Confusion Matrix")
-    plt.colorbar()
-    plt.show()
+# # Visualize the confusion matrix to understand the classification performance and errors
+# def visualize_confusion_matrix(test_labels, predicted_labels):
+#     cm = confusion_matrix(test_labels, predicted_labels)
+#     print("Classification Report:\n", classification_report(test_labels, predicted_labels))
+#     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+#     plt.title("Confusion Matrix")
+#     plt.colorbar()
+#     plt.show()
 
 weights_list = train_all_classes(train_features, train_labels, 200, lambda_reg=0.01, learning_rate=0.1)
 predicted_labels = classify_multi_class(weights_list, test_features, test_labels, activation_fn=sigmoid)

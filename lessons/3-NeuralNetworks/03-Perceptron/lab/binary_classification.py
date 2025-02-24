@@ -1,4 +1,4 @@
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import os
@@ -131,6 +131,6 @@ def run_experiments_using_validation():
 # Set positive and negative examples (binary classification)
 pos_examples, neg_examples = set_mnist_pos_neg(1, 0, train_labels, train_features)
 # Train the perceptron model
-wts = train(pos_examples, neg_examples, 500, 0.15)
+wts = train(pos_examples, neg_examples, 500, 0.01)
 # Compute the accuracy on the test data
 print(f"Test Accuracy: {accuracy(wts, test_features, test_labels):.4f}")
